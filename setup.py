@@ -5,7 +5,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.md')) as f:
     long_description = f.read()
 
-version = '2.2.2'
+version = '2.2.2_hwine'
 
 setup(name='agithub',
       version=version,
