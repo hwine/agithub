@@ -87,7 +87,7 @@ Pass custom http headers in your ruquest with the reserved parameter `headers`.
 from agithub.GitHub import GitHub
 g = GitHub()
 headers = {'Accept': 'application/vnd.github.symmetra-preview+json'}
-status, data = g.search.labels.get(headers=headers, repository_id=401025, q='¯\_(ツ)_/¯')
+status, data = g.search.labels.get(headers=headers, repository_id=401025, q='---------')
 print(data['items'][0])
 ```
 
