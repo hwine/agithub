@@ -97,6 +97,7 @@ class GitHubClient(Client):
         # TODO: Context manager
         requestBody = RequestBody(bodyData, headers)
 
+        self.check_remaining()
         if self.sleep_on_ratelimit and self.no_ratelimit_remaining():
             self.sleep_until_more_ratelimit()
 
@@ -109,6 +110,7 @@ class GitHubClient(Client):
             self.headers = response.getheaders()
 
             conn.close()
+            self.check_remaining()
             if (status == 403 and self.sleep_on_ratelimit and
                     self.no_ratelimit_remaining()):
                 self.sleep_until_more_ratelimit()
@@ -118,6 +120,43 @@ class GitHubClient(Client):
                     data.extend(
                         self.get_additional_pages(method, bodyData, headers))
                 return status, data
+
+    # From API call 
+    def ratelimit_dict(self):
+        #  return gh.ratelimit_remaining
+        #body = ag_call(gh.rate_limit.get, no_cache=True)
+        body = super(GitHubClient, self).request('GET', "/rate_limit", None, {})
+        return body
+
+
+    def check_remaining(self):
+        """ Debugging hack - verify the two methods of ratelimit testing
+        are in agreement
+
+        Returns nothing
+        """
+        # from no_ratelimit_remaining below
+        headers = dict(self.headers if self.headers is not None else [])
+        header_ratelimit_remaining = int(
+            headers.get('X-RateLimit-Remaining', 1))
+        header_ratelimit_seconds_until_reset = self.ratelimit_seconds_remaining()
+        header_reset = header_ratelimit_seconds_until_reset + time.time()
+
+        api_rate_limit = self.ratelimit_dict()
+
+        #import pudb; pudb.set_trace()
+        #logger.debug("from call: {}".format(repr(api_rate_limit)))
+        #logger.debug(api_rate_limit[1]["resources"]["core"]["remaining"])
+        delta = api_rate_limit[1]["resources"]["core"]["remaining"] - header_ratelimit_remaining
+        if abs(delta) > 10:
+            logger.debug("rate limits off by {}".format(delta))
+            logger.debug("From headers: remaining {}; reset in {}s at {}s".format(header_ratelimit_remaining,
+                        header_ratelimit_seconds_until_reset,
+                        int(header_reset)))
+
+            logger.debug("from call: {}".format(repr(api_rate_limit)))
+
+
 
     def get_additional_pages(self, method, bodyData, headers):
         data = []
@@ -143,13 +182,20 @@ class GitHubClient(Client):
                 'While fetching a paginated GitHub response page, a non-list '
                 'was returned with status {}: {}'.format(status, data))
 
-    def no_ratelimit_remaining(self):
+    def ratelimit_remaining(self):
         headers = dict(self.headers if self.headers is not None else [])
-        ratelimit_remaining = int(
+        remaining = int(
             headers.get('X-RateLimit-Remaining', 1))
-        return ratelimit_remaining == 0
+        return remaining
+
+
+    def no_ratelimit_remaining(self):
+        return self.ratelimit_remaining() == 0
+
 
     def ratelimit_seconds_remaining(self):
+        if not self.headers:
+            return 10
         ratelimit_reset = int(dict(self.headers).get(
             'X-RateLimit-Reset', 0))
         return max(0, int(ratelimit_reset - time.time()) + 1)
@@ -164,6 +210,8 @@ class GitHubClient(Client):
                         time.time() + self.ratelimit_seconds_remaining()))
             ))
         time.sleep(self.ratelimit_seconds_remaining())
+        logger.debug("Done with ratelimit sleep at {}".format(time.strftime("%H:%M:%S",
+                    time.localtime(time.time()))))
 
     def get_next_link_url(self):
         """Given a set of HTTP headers find the RFC 5988 Link header field,
